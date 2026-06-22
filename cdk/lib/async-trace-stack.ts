@@ -7,10 +7,10 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
 import * as path from 'path';
 
-// ADOT Lambda layer for Node.js (us-west-2)
-// Verify latest version at: https://aws-otel.github.io/docs/getting-started/lambda/lambda-js
+// ADOT Lambda layer for Python (us-east-1) — new recommended approach with Application Signals
+// Verify latest version at: https://aws-otel.github.io/docs/getting-started/lambda
 const ADOT_LAYER_ARN =
-  'arn:aws:lambda:us-west-2:901920570463:layer:aws-otel-nodejs-amd64-ver-1-30-0:1';
+  'arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroPython:28';
 
 export class AsyncTraceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -46,36 +46,32 @@ export class AsyncTraceStack extends cdk.Stack {
     // ── Producer Lambda ───────────────────────────────────────────────────────
     // Receives Stripe webhook from API Gateway, injects traceparent into SQS message attributes
     const producer = new lambda.Function(this, 'ProducerLambda', {
-      runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'index.handler',
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'lambda_function.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../../lambdas/producer')),
       layers: [adotLayer],
       tracing: lambda.Tracing.ACTIVE,
       timeout: cdk.Duration.seconds(15),
       environment: {
         QUEUE_URL: webhookQueue.queueUrl,
-        AWS_LAMBDA_EXEC_WRAPPER: '/opt/otel-handler',
+        AWS_LAMBDA_EXEC_WRAPPER: '/opt/otel-instrument',
         OTEL_SERVICE_NAME: 'webhook-producer',
-        OTEL_PROPAGATORS: 'tracecontext',
-        OTEL_TRACES_EXPORTER: 'otlp',
       },
     });
 
     // ── Consumer Lambda ───────────────────────────────────────────────────────
     // Pulls from SQS, extracts traceparent per message, opens child span, writes to DynamoDB
     const consumer = new lambda.Function(this, 'ConsumerLambda', {
-      runtime: lambda.Runtime.NODEJS_20_X,
-      handler: 'index.handler',
+      runtime: lambda.Runtime.PYTHON_3_12,
+      handler: 'lambda_function.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../../lambdas/consumer')),
       layers: [adotLayer],
       tracing: lambda.Tracing.ACTIVE,
       timeout: cdk.Duration.seconds(30),
       environment: {
         TABLE_NAME: eventsTable.tableName,
-        AWS_LAMBDA_EXEC_WRAPPER: '/opt/otel-handler',
+        AWS_LAMBDA_EXEC_WRAPPER: '/opt/otel-instrument',
         OTEL_SERVICE_NAME: 'webhook-consumer',
-        OTEL_PROPAGATORS: 'tracecontext',
-        OTEL_TRACES_EXPORTER: 'otlp',
       },
     });
 
