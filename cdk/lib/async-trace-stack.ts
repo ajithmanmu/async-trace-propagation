@@ -5,6 +5,7 @@ import * as apigw from 'aws-cdk-lib/aws-apigateway';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as path from 'path';
 
 // ADOT Lambda layer for Python (us-east-1) — new recommended approach with Application Signals
@@ -56,6 +57,9 @@ export class AsyncTraceStack extends cdk.Stack {
         QUEUE_URL: webhookQueue.queueUrl,
         AWS_LAMBDA_EXEC_WRAPPER: '/opt/otel-instrument',
         OTEL_SERVICE_NAME: 'webhook-producer',
+        OTEL_TRACES_EXPORTER: 'xray',
+        OTEL_PROPAGATORS: 'xray',
+        OTEL_METRICS_EXPORTER: 'none',
       },
     });
 
@@ -72,6 +76,9 @@ export class AsyncTraceStack extends cdk.Stack {
         TABLE_NAME: eventsTable.tableName,
         AWS_LAMBDA_EXEC_WRAPPER: '/opt/otel-instrument',
         OTEL_SERVICE_NAME: 'webhook-consumer',
+        OTEL_TRACES_EXPORTER: 'xray',
+        OTEL_PROPAGATORS: 'xray',
+        OTEL_METRICS_EXPORTER: 'none',
       },
     });
 
@@ -79,6 +86,14 @@ export class AsyncTraceStack extends cdk.Stack {
     webhookQueue.grantSendMessages(producer);
     webhookQueue.grantConsumeMessages(consumer);
     eventsTable.grantWriteData(consumer);
+
+    // Application Signals requires this managed policy on the execution role —
+    // Tracing.ACTIVE only grants X-Ray permissions, not Application Signals
+    const appSignalsPolicy = iam.ManagedPolicy.fromAwsManagedPolicyName(
+      'CloudWatchLambdaApplicationSignalsExecutionRolePolicy',
+    );
+    producer.role?.addManagedPolicy(appSignalsPolicy);
+    consumer.role?.addManagedPolicy(appSignalsPolicy);
 
     // ── SQS → Consumer trigger (batch of up to 10) ────────────────────────────
     consumer.addEventSource(
