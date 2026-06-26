@@ -39,16 +39,23 @@ def process_message(message):
     ctx = propagate.extract(carrier)
 
     with tracer.start_as_current_span('process-webhook', context=ctx) as span:
-        body = json.loads(message['body'])
-        event_id = body.get('eventId', 'unknown')
-        event_type = body.get('type', 'unknown')
+        try:
+            body = json.loads(message['body'])
+            event_id = body.get('eventId', 'unknown')
+            event_type = body.get('type', 'unknown')
 
-        span.set_attribute('webhook.event_id', event_id)
-        span.set_attribute('webhook.type', event_type)
-        span.set_attribute('trace.has_upstream_context', has_trace_context)
+            span.set_attribute('webhook.event_id', event_id)
+            span.set_attribute('webhook.type', event_type)
+            span.set_attribute('trace.has_upstream_context', has_trace_context)
 
-        table.put_item(Item={
-            'eventId': event_id,
-            'type': event_type,
-            'payload': json.dumps(body.get('payload', {})),
-        })
+            print(f"[process] event_id={event_id} message_id={message['messageId']} has_context={has_trace_context}")
+
+            table.put_item(Item={
+                'eventId': event_id,
+                'type': event_type,
+                'payload': json.dumps(body.get('payload', {})),
+            })
+        except Exception as e:
+            span.record_exception(e)
+            span.set_status(trace.StatusCode.ERROR, str(e))
+            raise
