@@ -10,9 +10,12 @@ tracer = trace.get_tracer(__name__)
 
 
 def handler(event, context):
+    records = event['Records']
+    print(f"[batch] size={len(records)}")
+
     batch_item_failures = []
 
-    for message in event['Records']:
+    for message in records:
         message_id = message['messageId']
         try:
             process_message(message)
@@ -24,12 +27,14 @@ def handler(event, context):
 
 
 def process_message(message):
-    # Extract traceparent from SQS message attributes — stitches the trace
-    # back to the producer span across the async boundary
     carrier = {}
     attrs = message.get('messageAttributes', {})
-    if 'X-Amzn-Trace-Id' in attrs:
+    has_trace_context = 'X-Amzn-Trace-Id' in attrs
+
+    if has_trace_context:
         carrier['X-Amzn-Trace-Id'] = attrs['X-Amzn-Trace-Id']['stringValue']
+    else:
+        print(f"[trace] no upstream context for message {message['messageId']} — starting fresh span")
 
     ctx = propagate.extract(carrier)
 
@@ -40,6 +45,7 @@ def process_message(message):
 
         span.set_attribute('webhook.event_id', event_id)
         span.set_attribute('webhook.type', event_type)
+        span.set_attribute('trace.has_upstream_context', has_trace_context)
 
         table.put_item(Item={
             'eventId': event_id,

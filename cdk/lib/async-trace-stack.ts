@@ -57,7 +57,7 @@ export class AsyncTraceStack extends cdk.Stack {
         QUEUE_URL: webhookQueue.queueUrl,
         AWS_LAMBDA_EXEC_WRAPPER: '/opt/otel-instrument',
         OTEL_SERVICE_NAME: 'webhook-producer',
-        OTEL_TRACES_EXPORTER: 'xray',
+        OTEL_AWS_APPLICATION_SIGNALS_ENABLED: 'true',
         OTEL_PROPAGATORS: 'xray',
         OTEL_METRICS_EXPORTER: 'none',
       },
@@ -76,7 +76,7 @@ export class AsyncTraceStack extends cdk.Stack {
         TABLE_NAME: eventsTable.tableName,
         AWS_LAMBDA_EXEC_WRAPPER: '/opt/otel-instrument',
         OTEL_SERVICE_NAME: 'webhook-consumer',
-        OTEL_TRACES_EXPORTER: 'xray',
+        OTEL_AWS_APPLICATION_SIGNALS_ENABLED: 'true',
         OTEL_PROPAGATORS: 'xray',
         OTEL_METRICS_EXPORTER: 'none',
       },
@@ -99,6 +99,7 @@ export class AsyncTraceStack extends cdk.Stack {
     consumer.addEventSource(
       new lambdaEventSources.SqsEventSource(webhookQueue, {
         batchSize: 10,
+        maxBatchingWindow: cdk.Duration.seconds(5),
         reportBatchItemFailures: true,
       }),
     );
